@@ -1,1549 +1,765 @@
 <!DOCTYPE html>
-
 <html lang="ko">
-
 <head>
-
     <meta charset="UTF-8">
-
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <title>Shopify Growth Dashboard</title>
-
     <!-- Tailwind CSS -->
-
     <script src="https://cdn.tailwindcss.com"></script>
-
     <!-- React & ReactDOM -->
-
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-
     <!-- PropTypes & Recharts -->
-
     <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
-
     <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
-
     <!-- Babel -->
-
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
     
-
     <!-- Firebase Module Export -->
-
     <script type="module">
-
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
         
-
-        // React 코드에서 사용할 수 있도록 전역 객체로 노출
-
         window.FirebaseAPI = { 
-
-            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, 
-
+            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, signInWithEmailAndPassword,
             onAuthStateChanged, getFirestore, doc, getDoc, setDoc, onSnapshot 
-
         };
-
     </script>
-
 </head>
-
 <body class="bg-slate-50">
-
     <div id="root"></div>
 
-
-
     <script type="text/babel">
-
-        // React 18.3+ defaultProps 경고 무시 (Recharts 라이브러리 내부 이슈 처리)
-
+        // React 18.3+ defaultProps 경고 무시
         const originalConsoleError = console.error;
-
         console.error = (...args) => {
-
-            if (typeof args[0] === 'string' && args[0].includes('Support for defaultProps will be removed')) {
-
-                return; // Recharts 관련 defaultProps 경고 무시
-
-            }
-
+            if (typeof args[0] === 'string' && args[0].includes('Support for defaultProps will be removed')) return;
             originalConsoleError(...args);
-
         };
-
-
 
         const { useState, useMemo, useRef, useEffect } = React;
-
         const { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, PieChart, Pie, Cell, LabelList } = Recharts;
 
-
-
-        // Reliable Inline SVG Icons
-
-        const TrendingUp = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>);
-
+        // Icons
         const Users = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>);
-
         const DollarSign = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>);
-
         const Zap = ({ className = "w-4 h-4", fill="none" }) => (<svg className={className} fill={fill} stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>);
-
         const ArrowUpRight = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>);
-
         const ArrowDownRight = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="7" y1="7" x2="17" y2="17"></line><polyline points="17 7 17 17 7 17"></polyline></svg>);
-
         const LayoutList = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>);
-
         const Upload = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>);
-
         const Globe = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>);
-
-        const UserMinus = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="23" y1="11" x2="17" y2="11"></line></svg>);
-
         const FileText = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>);
-
         const CreditCard = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>);
-
         const Calendar = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>);
-
         const Cloud = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>);
-
         const CloudOff = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 15h9a5 5 0 0 0 1.7-.3"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>);
-
         const CheckCircle = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>);
-
         const Filter = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>);
-
         const CalendarDays = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line><path d="M8 14h.01"></path><path d="M12 14h.01"></path><path d="M16 14h.01"></path><path d="M8 18h.01"></path><path d="M12 18h.01"></path><path d="M16 18h.01"></path></svg>);
-
-
-
-        const CHURN_ROW_HEIGHT = 56;
-
-        const CHURN_HEADER_HEIGHT = 48;
+        const Lock = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>);
+        const Unlock = ({ className = "w-4 h-4" }) => (<svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>);
 
         const INITIAL_DATA = [{ label: '데이터 없음', newInstalls: 0, uninstalls: 0, storeClosed: 0, step1: 0, step2_1: 0, step2_2: 0, step2_3: 0, step3: 0, exposedRate: 0, paid: 0, retentionRate: 0, earlyUninstalls: 0, earlyClosed: 0, earlyChurnRate: 0 }];
-
-        
-
         const COHORT_COLORS = { '1. 정보 확인': '#94a3b8', '2-1. 색상 선택': '#60a5fa', '2-2. Core Snippet': '#3b82f6', '2-3. 위젯 설치': '#2563eb', '3. 완료 (최종)': '#10b981', '▶ 위젯 노출 여부': '#f59e0b' };
+        const CustomScrollbarStyle = `.hide-scroll::-webkit-scrollbar { height: 6px; } .hide-scroll::-webkit-scrollbar-track { background: transparent; } .hide-scroll::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; } .hide-scroll { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }`;
 
-
-
-        const CustomScrollbarStyle = `
-
-            .hide-scroll::-webkit-scrollbar { height: 6px; }
-
-            .hide-scroll::-webkit-scrollbar-track { background: transparent; }
-
-            .hide-scroll::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
-
-            .hide-scroll { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
-
-        `;
-
-
-
-        // -----------------------------------------------------------------------------------------
-
-        // 🔥 [필수 설정] 본인의 파이어베이스 설정값을 여기에 붙여넣으세요! 🔥
-
-        // Vercel 환경이나 외부 공유 링크에서 다른 사람들과 실시간 데이터를 공유하려면 필수입니다.
-
-        // (파이어베이스 콘솔 -> 프로젝트 설정 -> 일반 -> 내 앱 하단에서 확인 가능)
-
-        // -----------------------------------------------------------------------------------------
-
+        // 🔥 Firebase 설정
         const MY_FIREBASE_CONFIG = {
-
-  apiKey: "AIzaSyBO9MxIcql3k1FkavklUMQy_vqwCThOd1M",
-
-  authDomain: "shopify-dashboard-c4d46.firebaseapp.com",
-
-  projectId: "shopify-dashboard-c4d46",
-
-  storageBucket: "shopify-dashboard-c4d46.firebasestorage.app",
-
-  messagingSenderId: "33060733160",
-
-  appId: "1:33060733160:web:02c923f39779e7a5d5095d"
-
-};
-
-
-
-
+          apiKey: "AIzaSyBO9MxIcql3k1FkavklUMQy_vqwCThOd1M",
+          authDomain: "shopify-dashboard-c4d46.firebaseapp.com",
+          projectId: "shopify-dashboard-c4d46",
+          storageBucket: "shopify-dashboard-c4d46.firebasestorage.app",
+          messagingSenderId: "33060733160",
+          appId: "1:33060733160:web:02c923f39779e7a5d5095d"
+        };
 
         const parseCSVLine = (text) => {
-
             const result = []; let cell = ''; let inQuotes = false;
-
             for (let i = 0; i < text.length; i++) {
-
                 const char = text[i];
-
                 if (char === '"') inQuotes = !inQuotes;
-
                 else if (char === ',' && !inQuotes) { result.push(cell); cell = ''; }
-
                 else cell += char;
-
             }
-
             result.push(cell); return result;
-
         };
-
-
 
         const MetricCard = ({ title, value, subtext, icon: IconComponent, trend, customTrend }) => (
-
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-
                 <div className="flex justify-between items-start mb-4">
-
                     <div className="p-2 bg-indigo-50 rounded-lg">
-
                         {IconComponent && <IconComponent className="w-6 h-6 text-indigo-600" />}
-
                     </div>
-
                     {customTrend ? customTrend : (trend !== null && trend !== undefined && !isNaN(trend) && trend !== 0 && (
-
                         <span className={`flex items-center text-sm font-medium ${trend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-
                             {trend >= 0 ? <ArrowUpRight className="w-4 h-4 mr-1" /> : <ArrowDownRight className="w-4 h-4 mr-1" />}
-
                             {Math.abs(trend)}%
-
                         </span>
-
                     ))}
-
                 </div>
-
                 <h3 className="text-slate-500 text-sm font-medium mb-1">{title}</h3>
-
                 <p className="text-2xl font-bold text-slate-800">{String(value)}</p>
-
                 {subtext && <p className="text-xs text-slate-400 mt-2 font-medium">{subtext}</p>}
-
             </div>
-
         );
-
-
-
-        // (툴팁 컴포넌트 생략 - 이전과 동일하여 코드 길이 최적화)
 
         const ViewModeSelector = ({ mode, setMode }) => (
-
             <div className="flex bg-slate-100 p-1 rounded-xl">
-
                 {['daily', 'weekly', 'monthly'].map((m) => (
-
                     <button key={m} onClick={() => setMode(m)} className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${mode === m ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-
                         {m === 'daily' ? '일간' : m === 'weekly' ? '주간' : '월간'}
-
                     </button>
-
                 ))}
-
             </div>
-
         );
 
-
-
         const DraggableChartContainer = ({ children, dataLength, mode }) => {
-
             const scrollRef = useRef(null);
-
             const [isDragging, setIsDragging] = useState(false);
-
             const [startX, setStartX] = useState(0);
-
             const [scrollLeft, setScrollLeft] = useState(0);
-
             const onMouseDown = e => { setIsDragging(true); setStartX(e.pageX - scrollRef.current.offsetLeft); setScrollLeft(scrollRef.current.scrollLeft); };
-
             const onMouseLeave = () => setIsDragging(false); const onMouseUp = () => setIsDragging(false);
-
             const onMouseMove = e => { if (!isDragging) return; e.preventDefault(); const x = e.pageX - scrollRef.current.offsetLeft; const walk = (x - startX) * 1.5; scrollRef.current.scrollLeft = scrollLeft - walk; };
-
             const itemWidth = mode === 'daily' ? 40 : mode === 'weekly' ? 60 : 80;
-
             const minWidth = Math.max(0, dataLength * itemWidth);
-
             return (
-
                 <div ref={scrollRef} className={`w-full h-full overflow-x-auto overflow-y-hidden select-none hide-scroll ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`} onMouseDown={onMouseDown} onMouseLeave={onMouseLeave} onMouseUp={onMouseUp} onMouseMove={onMouseMove}>
-
                     <div style={{ minWidth: minWidth > 0 ? `${minWidth}px` : '100%', height: '100%' }}>{children}</div>
-
                 </div>
-
             );
-
         };
 
-
-
         function App() {
-
-            // 사용자 및 파이어베이스 설정
-
             const [user, setUser] = useState(null);
-
-            const [cloudStatus, setCloudStatus] = useState('initializing'); // initializing, local, connected, error
-
+            const [cloudStatus, setCloudStatus] = useState('initializing'); 
             const [dbInstance, setDbInstance] = useState(null);
-
+            const [authInstance, setAuthInstance] = useState(null); 
             const [appIdStr, setAppIdStr] = useState('global_shopify_dashboard_v2');
 
-
-
-            // 데이터 상태
-
             const [rawOnboardingRows, setRawOnboardingRows] = useState([]);
-
             const [filterStartDate, setFilterStartDate] = useState('');
-
             const [filterEndDate, setFilterEndDate] = useState('');
-
             const [dailyStats, setDailyStats] = useState([]);
-
             const [weeklyData, setWeeklyData] = useState([]);
-
             const [monthlyStats, setMonthlyStats] = useState([]);
-
             const [compStats, setCompStats] = useState([]);
-
             const [countryStats, setCountryStats] = useState([]);
-
-            const [churnStats, setChurnStats] = useState([]);
-
             const [planData, setPlanData] = useState([]);
-
             
-
             const [totalPaidUsers, setTotalPaidUsers] = useState(0);
-
             const [paidAdded, setPaidAdded] = useState(0);
-
             const [paidCancelled, setPaidCancelled] = useState(0);
-
             const [hasOnboardingData, setHasOnboardingData] = useState(false);
-
             const [hasPaymentData, setHasPaymentData] = useState(false);
-
             const [isSyncing, setIsSyncing] = useState(false);
 
-
-
             const [trendViewMode, setTrendViewMode] = useState('weekly');
-
-            const [earlyChurnViewMode, setEarlyChurnViewMode] = useState('weekly');
-
             const [onboardingViewMode, setOnboardingViewMode] = useState('weekly');
-
             const [summaryViewMode, setSummaryViewMode] = useState('monthly');
-
             const [cohortFocus, setCohortFocus] = useState(null);
-
-
 
             const fileInputRef = useRef(null);
 
-
-
             useEffect(() => {
-
-                // 1. 앱 진입 즉시 로컬 캐시에서 데이터를 불러와 새로고침 방어
-
                 const cachedOnboarding = localStorage.getItem('shopify_dashboard_onboarding');
-
                 const cachedPayment = localStorage.getItem('shopify_dashboard_payment');
-
                 if (cachedOnboarding) processOnboardingData(cachedOnboarding, false);
-
                 if (cachedPayment) processPaymentData(cachedPayment, false);
 
-
-
-                // 2. 파이어베이스 모듈 확인
-
                 if (!window.FirebaseAPI) {
-
                     setCloudStatus('local');
-
                     return;
-
                 }
+                const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore } = window.FirebaseAPI;
 
-                const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore } = window.FirebaseAPI;
-
-
-
-                // 3. 설정 확인 (커스텀 설정 우선, 그다음 제미나이 환경 변수)
-
-                let configToUse = null;
-
-                if (MY_FIREBASE_CONFIG && MY_FIREBASE_CONFIG.apiKey) {
-
-                    configToUse = MY_FIREBASE_CONFIG;
-
-                } else if (typeof window.__firebase_config !== 'undefined') {
-
-                    try {
-
-                        configToUse = typeof window.__firebase_config === 'string' ? JSON.parse(window.__firebase_config) : window.__firebase_config;
-
-                    } catch(e) {}
-
-                }
-
-
-
+                let configToUse = MY_FIREBASE_CONFIG;
                 if (!configToUse || !configToUse.apiKey) {
-
-                    // Vercel 등 외부 환경에서 커스텀 설정이 없는 경우
-
                     setCloudStatus('local');
-
                     return;
-
                 }
-
-
 
                 try {
-
                     const fbApp = initializeApp(configToUse);
-
                     const fbAuth = getAuth(fbApp);
-
                     const fbDb = getFirestore(fbApp);
-
                     setDbInstance(fbDb);
+                    setAuthInstance(fbAuth);
 
-
-
-                    const finalAppId = (typeof window.__app_id !== 'undefined' && window.__app_id) ? window.__app_id : 'global_shopify_dashboard_v2';
-
-                    setAppIdStr(finalAppId);
-
-
+                    setAppIdStr('global_shopify_dashboard_v2');
 
                     const doAuth = async () => {
-
                         try {
-
-                            if (typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token) {
-
-                                await signInWithCustomToken(fbAuth, window.__initial_auth_token);
-
-                            } else {
-
-                                await signInAnonymously(fbAuth);
-
-                            }
-
+                            await signInAnonymously(fbAuth); 
                         } catch (err) {
-
-                            console.error("Firebase Auth Error:", err);
-
-                            setCloudStatus('error');
-
+                            console.error("Anonymous Auth Failed (This is OK if public read is allowed):", err);
+                            // 에러가 나더라도 Firestore 읽기를 시도하도록 cloudStatus를 변경합니다.
+                            setCloudStatus('connected'); 
                         }
-
                     };
-
                     
-
                     doAuth();
-
                     const unsubscribe = onAuthStateChanged(fbAuth, (u) => {
-
                         setUser(u);
-
-                        if(u) setCloudStatus('connected');
-
+                        setCloudStatus('connected'); // 로그인 여부 상관없이 무조건 connected로 변경
                     });
-
                     return () => unsubscribe();
-
                 } catch (err) {
-
                     console.error("Firebase Init Error:", err);
-
                     setCloudStatus('error');
-
                 }
-
             }, []);
 
+            const handleAdminLogin = async () => {
+                if (!authInstance || !window.FirebaseAPI || !window.FirebaseAPI.signInWithEmailAndPassword) {
+                    alert("Firebase 인증 모듈을 불러올 수 없습니다.");
+                    return;
+                }
+                
+                const { signInWithEmailAndPassword } = window.FirebaseAPI;
+                
+                const email = prompt("관리자 이메일을 입력하세요:");
+                if (!email) return;
+                const password = prompt("비밀번호를 입력하세요:");
+                if (!password) return;
 
+                try {
+                    await signInWithEmailAndPassword(authInstance, email, password);
+                    alert("관리자 로그인 성공!\n이제 데이터를 업로드하면 클라우드에 정상적으로 반영되어 모두에게 공유됩니다.");
+                } catch (e) {
+                    alert("로그인 실패. 권한이 없습니다.\n" + e.message);
+                }
+            };
 
+            // 🔥 읽기 조건 완화: user 로그인 여부와 무관하게 dbInstance만 있으면 무조건 읽어옴
             useEffect(() => {
-
-                if (cloudStatus !== 'connected' || !user || !dbInstance || !window.FirebaseAPI) return;
-
+                if (!dbInstance || !window.FirebaseAPI) return;
                 const { doc, onSnapshot } = window.FirebaseAPI;
-
                 
-
                 const dataDocRef = doc(dbInstance, 'artifacts', appIdStr, 'public', 'data', 'csv_data', 'latest');
-
                 
-
                 setIsSyncing(true);
-
                 const unsubscribe = onSnapshot(dataDocRef, (docSnap) => {
-
                     if (docSnap.exists()) {
-
                         const data = docSnap.data();
-
                         if (data.onboardingCsv) {
-
                             localStorage.setItem('shopify_dashboard_onboarding', data.onboardingCsv);
-
                             processOnboardingData(data.onboardingCsv, false);
-
                         }
-
                         if (data.paymentCsv) {
-
                             localStorage.setItem('shopify_dashboard_payment', data.paymentCsv);
-
                             processPaymentData(data.paymentCsv, false);
-
                         }
-
                     }
-
                     setIsSyncing(false);
-
                 }, (error) => {
-
                     console.error("Firestore sync error:", error);
-
                     setCloudStatus('error');
-
                     setIsSyncing(false);
-
                 });
-
-
 
                 return () => unsubscribe();
-
-            }, [cloudStatus, user, dbInstance, appIdStr]);
-
-
+            }, [dbInstance, appIdStr]);
 
             const handleFileUpload = async (e) => {
-
                 const file = e.target.files[0];
-
                 if (!file) return;
 
-
-
-                const reader = new FileReader();
-
-                reader.onload = async (ev) => {
-
-                    const text = ev.target.result;
-
-                    
-
-                    // 1. 무조건 로컬(localStorage)에 먼저 저장하여 새로고침 방어
-
-                    if (text.includes('앱설치일')) {
-
-                        localStorage.setItem('shopify_dashboard_onboarding', text);
-
-                        processOnboardingData(text, true);
-
-                    } else if (text.includes('신청 플랜')) {
-
-                        localStorage.setItem('shopify_dashboard_payment', text);
-
-                        processPaymentData(text, true);
-
-                    } else {
-
-                        alert("올바른 Shopify CSV 형식이 아닙니다.");
-
+                // 로그인 확인 (이메일 폼 로그인인지 검증)
+                const isEmailUser = user && user.email;
+                if (!isEmailUser) {
+                    const confirmUpload = window.confirm("⚠️ 현재 '읽기 전용' 상태입니다.\n이 상태로 업로드하면 본인 화면에만 보이고 다른 사람에게는 공유되지 않습니다.\n\n계속 진행하시겠습니까?\n(공유를 원하시면 취소를 누르고 좌측 상단의 🔒 관리자 로그인을 먼저 진행하세요)");
+                    if (!confirmUpload) {
+                        e.target.value = null;
                         return;
-
                     }
-
-
-
-                    // 2. 클라우드 연결 상태면 클라우드에도 전송
-
-                    if (cloudStatus === 'connected' && user && dbInstance && window.FirebaseAPI) {
-
-                        const { doc, setDoc } = window.FirebaseAPI;
-
-                        try {
-
-                            setIsSyncing(true);
-
-                            const dataDocRef = doc(dbInstance, 'artifacts', appIdStr, 'public', 'data', 'csv_data', 'latest');
-
-                            const payload = {};
-
-                            if (text.includes('앱설치일')) payload.onboardingCsv = text;
-
-                            if (text.includes('신청 플랜')) payload.paymentCsv = text;
-
-                            
-
-                            await setDoc(dataDocRef, payload, { merge: true });
-
-                            setIsSyncing(false);
-
-                        } catch (err) {
-
-                            console.error("Cloud upload error:", err);
-
-                            alert("클라우드 저장 실패! (파일이 너무 크거나 권한이 없습니다.)\n내 컴퓨터(로컬)에는 정상적으로 적용되었습니다.");
-
-                            setIsSyncing(false);
-
-                        }
-
-                    }
-
-                };
-
-                reader.readAsText(file);
-
-                e.target.value = null;
-
-            };
-
-
-
-            const processOnboardingData = (csvText, isNewUpload = false) => {
-
-                try {
-
-                    const lines = csvText.split('\n').filter(l => l.trim().length > 5);
-
-                    if (lines.length < 1) return;
-
-                    const headers = parseCSVLine(lines[0]);
-
-                    const idxDate = headers.findIndex(h => h.trim().includes('앱설치일'));
-
-                    const idxCountry = headers.findIndex(h => h.trim().includes('국가'));
-
-                    const idxUn = headers.findIndex(h => h.trim().includes('앱 삭제'));
-
-                    const idxCl = headers.findIndex(h => h.trim().includes('Store closed'));
-
-                    const idxS1 = headers.findIndex(h => h.trim().startsWith('1)'));
-
-                    const idxS2_1 = headers.findIndex(h => h.trim().startsWith('2-1)'));
-
-                    const idxS2_2 = headers.findIndex(h => h.trim().startsWith('2-2)'));
-
-                    const idxS2_3 = headers.findIndex(h => h.trim().startsWith('2-3)'));
-
-                    const idxS3 = headers.findIndex(h => h.trim().startsWith('3)'));
-
-                    const idxExp = headers.findIndex(h => h.trim().includes('위젯 노출여부'));
-
-                    const idxChurn = headers.findIndex(h => h.trim().includes('이탈일'));
-
-                    const idxPaid = headers.findIndex(h => h.trim().includes('유료 결제'));
-
-
-
-                    const dateRegex = /(\d{4})[\.\-\/]\s*(\d{1,2})[\.\-\/]\s*(\d{1,2})/;
-
-                    const rows = [];
-
-                    lines.slice(1).forEach(line => {
-
-                        const cols = parseCSVLine(line);
-
-                        if (!cols[idxDate]) return;
-
-                        const match = cols[idxDate].replace(/["']/g, '').trim().match(dateRegex);
-
-                        if (!match) return;
-
-                        const yr = Number(match[1]), mo = Number(match[2]), dy = Number(match[3]);
-
-                        const dObj = new Date(yr, mo - 1, dy);
-
-                        const dStr = `${yr}-${String(mo).padStart(2, '0')}-${String(dy).padStart(2, '0')}`;
-
-                        const isT = (v) => v && (v.replace(/["']/g, '').trim().toUpperCase() === 'TRUE');
-
-                        let chDate = null;
-
-                        if (idxChurn !== -1 && cols[idxChurn]) {
-
-                            const cMatch = cols[idxChurn].replace(/["']/g, '').trim().match(dateRegex);
-
-                            if (cMatch) chDate = new Date(Number(cMatch[1]), Number(cMatch[2])-1, Number(cMatch[3]));
-
-                        }
-
-                        rows.push({
-
-                            rawDate: dObj, dateStr: dStr, yr, mo, country: cols[idxCountry]?.replace(/["']/g, '').trim() || 'Unknown',
-
-                            uninstalled: isT(cols[idxUn]), closed: isT(cols[idxCl]), paid: isT(cols[idxPaid]),
-
-                            s1: isT(cols[idxS1]), s2_1: isT(cols[idxS2_1]), s2_2: isT(cols[idxS2_2]), s2_3: isT(cols[idxS2_3]), s3: isT(cols[idxS3]), exp: isT(cols[idxExp]),
-
-                            churnDate: chDate
-
-                        });
-
-                    });
-
-
-
-                    setRawOnboardingRows(rows);
-
-                    setHasOnboardingData(true);
-
-                } catch (e) { console.error(e); }
-
-            };
-
-
-
-            const processPaymentData = (csvText, isNewUpload = false) => {
-
-                try {
-
-                    const lines = csvText.split('\n').filter(l => l.trim().length > 2);
-
-                    const headers = parseCSVLine(lines[0]);
-
-                    const idxPlan = headers.findIndex(h => h.trim().includes('신청 플랜'));
-
-                    const idxCancel = headers.findIndex(h => h.trim().includes('해지'));
-
-                    const planCounts = { 'Flexible': 0, 'Unlimited 30': 0, 'Unlimited 365': 0 };
-
-                    let activeTotal = 0; let addedTotal = 0; let cancelledTotal = 0;
-
-
-
-                    lines.slice(1).forEach(line => {
-
-                        const cols = parseCSVLine(line);
-
-                        const pNameRaw = cols[idxPlan]?.replace(/["']/g, '').trim();
-
-                        const pName = pNameRaw?.toLowerCase();
-
-                        let isCancelled = false;
-
-                        if (idxCancel !== -1 && cols[idxCancel]) {
-
-                            const cancelVal = cols[idxCancel].replace(/["']/g, '').trim().toUpperCase();
-
-                            if (cancelVal && cancelVal !== 'FALSE' && cancelVal !== '0') isCancelled = true;
-
-                        }
-
-
-
-                        if (pName) {
-
-                            addedTotal++;
-
-                            if (isCancelled) {
-
-                                cancelledTotal++;
-
-                            } else {
-
-                                activeTotal++;
-
-                                if (pName.includes('flexible')) { planCounts['Flexible']++; }
-
-                                else if (pName.includes('30')) { planCounts['Unlimited 30']++; }
-
-                                else if (pName.includes('365')) { planCounts['Unlimited 365']++; }
-
-                            }
-
-                        }
-
-                    });
-
-                    setPlanData([
-
-                        { name: 'Flexible', count: planCounts['Flexible'], color: '#fbbf24' },
-
-                        { name: 'Unlimited 30', count: planCounts['Unlimited 30'], color: '#3b82f6' },
-
-                        { name: 'Unlimited 365', count: planCounts['Unlimited 365'], color: '#4f46e5' }
-
-                    ]);
-
-                    setTotalPaidUsers(activeTotal);
-
-                    setPaidAdded(addedTotal);
-
-                    setPaidCancelled(cancelledTotal);
-
-                    setHasPaymentData(true);
-
-                } catch (e) { console.error(e); }
-
-            };
-
-
-
-            useEffect(() => {
-
-                if (!rawOnboardingRows || rawOnboardingRows.length === 0) return;
-
-
-
-                let filteredRows = rawOnboardingRows;
-
-                if (filterStartDate) { const sDate = new Date(filterStartDate); filteredRows = filteredRows.filter(r => r.rawDate >= sDate); }
-
-                if (filterEndDate) { const eDate = new Date(filterEndDate); eDate.setHours(23, 59, 59, 999); filteredRows = filteredRows.filter(r => r.rawDate <= eDate); }
-
-
-
-                const mapToFinalData = (map) => Array.from(map.entries()).sort().map(([label, d]) => ({
-
-                    label: String(label), newInstalls: d.n, uninstalls: d.un, storeClosed: d.cl, paid: d.pd,
-
-                    earlyUninstalls: d.earlyUn, earlyClosed: d.earlyCl,
-
-                    s1: d.s1, s2_1: d.s2_1, s2_2: d.s2_2, s2_3: d.s2_3, s3: d.s3, exp: d.exp,
-
-                    step1: d.n ? (d.s1/d.n*100).toFixed(1) : "0.0",
-
-                    step2_1: d.n ? (d.s2_1/d.n*100).toFixed(1) : "0.0",
-
-                    step2_2: d.n ? (d.s2_2/d.n*100).toFixed(1) : "0.0",
-
-                    step2_3: d.n ? (d.s2_3/d.n*100).toFixed(1) : "0.0",
-
-                    step3: d.n ? (d.s3/d.n*100).toFixed(1) : "0.0",
-
-                    exposedRate: d.n ? (d.exp/d.n*100).toFixed(1) : "0.0", netInstalls: Math.max(0, d.n - d.un - d.cl),
-
-                    retentionRate: d.n ? (((Math.max(0, d.n - d.un - d.cl))/d.n)*100).toFixed(1) : "0.0",
-
-                    earlyChurnRate: d.n ? ((d.earlyUn / d.n) * 100).toFixed(1) : "0.0"
-
-                }));
-
-
-
-                const dayMap = new Map(); const weekMap = new Map(); const monthMap = new Map();
-
-                const getWkKey = (d) => { const mon = new Date(d); const diff = mon.getDate() - mon.getDay() + (mon.getDay() === 0 ? -6 : 1); mon.setDate(diff); return `${mon.getFullYear()}-${String(mon.getMonth()+1).padStart(2,'0')}-${String(mon.getDate()).padStart(2,'0')}`; };
-
-                filteredRows.forEach(r => {
-
-                    const keys = [r.dateStr, getWkKey(r.rawDate), `${r.yr}-${String(r.mo).padStart(2, '0')}`];
-
-                    const maps = [dayMap, weekMap, monthMap];
-
-                    let isEarlyChurn = false;
-
-                    if (r.churnDate) {
-
-                        const days = Math.ceil(Math.abs(r.churnDate - r.rawDate) / (1000 * 60 * 60 * 24));
-
-                        if (days <= 1) isEarlyChurn = true;
-
-                    }
-
-
-
-                    keys.forEach((k, idx) => {
-
-                        if(!maps[idx].has(k)) maps[idx].set(k, { n: 0, un: 0, cl: 0, earlyUn: 0, earlyCl: 0, s1:0, s2_1:0, s2_2:0, s2_3:0, s3:0, exp:0, pd:0 });
-
-                        const m = maps[idx].get(k);
-
-                        m.n++;
-
-                        if(r.uninstalled) { m.un++; if(isEarlyChurn) m.earlyUn++; }
-
-                        if(r.closed) { m.cl++; if(isEarlyChurn) m.earlyCl++; }
-
-                        if(r.s1) m.s1++; if(r.s2_1) m.s2_1++; if(r.s2_2) m.s2_2++; if(r.s2_3) m.s2_3++; if(r.s3) m.s3++; if(r.exp) m.exp++; if(r.paid) m.pd++;
-
-                    });
-
-                });
-
-                setDailyStats(mapToFinalData(dayMap)); setWeeklyData(mapToFinalData(weekMap)); setMonthlyStats(mapToFinalData(monthMap));
-
-
-
-                const calcStats = (arr) => ({ base: arr.length, s1: arr.filter(x => x.s1).length, s2_1: arr.filter(x => x.s2_1).length, s2_2: arr.filter(x => x.s2_2).length, s2_3: arr.filter(x => x.s2_3).length, s3: arr.filter(x => x.s3).length, exp: arr.filter(x => x.exp).length });
-
-                const cL = calcStats(filteredRows.filter(r => r.dateStr <= '2025-12-28'));
-
-                const cI1 = calcStats(filteredRows.filter(r => r.dateStr >= '2025-12-29' && r.dateStr <= '2026-02-01'));
-
-                const cI2 = calcStats(filteredRows.filter(r => r.dateStr >= '2026-02-02'));
-
-                const getRates = (c, k, pk) => {
-
-                    const rate = c.base > 0 ? (c[k]/c.base*100).toFixed(1) : "0.0";
-
-                    const prevCount = pk === 'base' ? c.base : c[pk];
-
-                    const prevRate = prevCount > 0 ? (c[k]/prevCount*100).toFixed(1) : "0.0";
-
-                    return { rate, prev: prevRate };
-
-                };
-
-
-
-                setCompStats([{ label: '1. 정보 확인', k: 's1', pk: 'base' }, { label: '2-1. 색상 선택', k: 's2_1', pk: 's1' }, { label: '2-2. Core Snippet', k: 's2_2', pk: 's2_1' }, { label: '2-3. 위젯 설치', k: 's2_3', pk: 's2_2' }, { label: '3. 완료 (최종)', k: 's3', pk: 's2_3' }, { label: '▶ 위젯 노출 여부', k: 'exp', pk: 's3' }].map(item => {
-
-                    const d1 = getRates(cL, item.k, item.pk); const d2 = getRates(cI1, item.k, item.pk); const d3 = getRates(cI2, item.k, item.pk);
-
-                    return { step: item.label, legacy: d1, imp1: d2, imp2: d3, diff: (parseFloat(d3.rate)-parseFloat(d1.rate)).toFixed(1) };
-
-                }));
-
-
-
-                const churnBuckets = { '0~1일': {c:0, un:0, cl:0, s1:0, s3:0, exp:0}, '2~3일': {c:0, un:0, cl:0, s1:0, s3:0, exp:0}, '4~7일': {c:0, un:0, cl:0, s1:0, s3:0, exp:0}, '8~14일': {c:0, un:0, cl:0, s1:0, s3:0, exp:0}, '15~30일': {c:0, un:0, cl:0, s1:0, s3:0, exp:0}, '30일 이상': {c:0, un:0, cl:0, s1:0, s3:0, exp:0} };
-
-                filteredRows.forEach(r => { if(r.churnDate) { const days = Math.ceil(Math.abs(r.churnDate - r.rawDate) / (1000 * 60 * 60 * 24)); let b = '30일 이상'; if(days<=1) b='0~1일'; else if(days<=3) b='2~3일'; else if(days<=7) b='4~7일'; else if(days<=14) b='8~14일'; else if(days<=30) b='15~30일'; const t = churnBuckets[b]; t.c++; if(r.uninstalled) t.un++; if(r.closed) t.cl++; if(r.s1) t.s1++; if(r.s3) t.s3++; if(r.exp) t.exp++; } });
-
-                const totalChurnUninstalls = Object.values(churnBuckets).reduce((sum, b) => sum + b.un, 0); const totalChurnClosed = Object.values(churnBuckets).reduce((sum, b) => sum + b.cl, 0);
-
-                setChurnStats(Object.keys(churnBuckets).map(k => ({
-
-                    range: k, count: churnBuckets[k].c, uninstalls: churnBuckets[k].un, closed: churnBuckets[k].cl,
-
-                    uninstallRate: totalChurnUninstalls > 0 ? ((churnBuckets[k].un / totalChurnUninstalls) * 100).toFixed(1) : 0,
-
-                    closedRate: totalChurnClosed > 0 ? ((churnBuckets[k].cl / totalChurnClosed) * 100).toFixed(1) : 0,
-
-                    s1Rate: churnBuckets[k].c ? (churnBuckets[k].s1/churnBuckets[k].c*100).toFixed(1) : 0,
-
-                    s3Rate: churnBuckets[k].c ? (churnBuckets[k].s3/churnBuckets[k].c*100).toFixed(1) : 0,
-
-                    expRate: churnBuckets[k].c ? (churnBuckets[k].exp/churnBuckets[k].c*100).toFixed(1) : 0
-
-                })).filter(x => x.count > 0));
-
-
-
-                const countryMapLocal = new Map();
-
-                filteredRows.forEach(r => {
-
-                    const cKey = r.country || 'Unknown';
-
-                    if (!countryMapLocal.has(cKey)) countryMapLocal.set(cKey, { n: 0, un: 0, cl: 0, s3: 0, exp: 0, pd: 0 });
-
-                    const c = countryMapLocal.get(cKey);
-
-                    c.n++; if(r.uninstalled) c.un++; if(r.closed) c.cl++; if(r.s3) c.s3++; if(r.exp) c.exp++; if(r.paid) c.pd++;
-
-                });
-
-                let sortedCountries = Array.from(countryMapLocal.entries()).map(([country, d]) => ({ country, newInstalls: d.n, uninstalls: d.un, storeClosed: d.cl, s3: d.s3, exp: d.exp, paid: d.pd })).sort((a,b) => b.newInstalls - a.newInstalls);
-
-                const top10 = sortedCountries.slice(0, 10); const othersRaw = sortedCountries.slice(10);
-
-                let finalCountryStats = top10;
-
-                if (othersRaw.length > 0) {
-
-                    const othersObj = othersRaw.reduce((acc, curr) => ({ country: '기타 (Others)', newInstalls: acc.newInstalls + curr.newInstalls, uninstalls: acc.uninstalls + curr.uninstalls, storeClosed: acc.storeClosed + curr.storeClosed, s3: acc.s3 + curr.s3, exp: acc.exp + curr.exp, paid: acc.paid + curr.paid }), { country: '기타 (Others)', newInstalls: 0, uninstalls: 0, storeClosed: 0, s3: 0, exp: 0, paid: 0 });
-
-                    finalCountryStats = [...top10, othersObj];
-
                 }
 
-                setCountryStats(finalCountryStats.map(d => ({ ...d, uninstallRate: d.newInstalls ? ((d.uninstalls/d.newInstalls)*100).toFixed(1) : "0.0", closedRate: d.newInstalls ? ((d.storeClosed/d.newInstalls)*100).toFixed(1) : "0.0", onboardingRate: d.newInstalls ? ((d.s3/d.newInstalls)*100).toFixed(1) : "0.0", exposedRate: d.newInstalls ? ((d.exp/d.newInstalls)*100).toFixed(1) : "0.0", paidRate: d.newInstalls ? ((d.paid/d.newInstalls)*100).toFixed(1) : "0.0", retentionRate: d.newInstalls ? (((Math.max(0, d.newInstalls - d.uninstalls - d.storeClosed))/d.newInstalls)*100).toFixed(1) : 0 })));
+                const reader = new FileReader();
+                reader.onload = async (ev) => {
+                    const text = ev.target.result;
+                    
+                    if (text.includes('앱설치일')) {
+                        localStorage.setItem('shopify_dashboard_onboarding', text);
+                        processOnboardingData(text, true);
+                    } else if (text.includes('신청 플랜')) {
+                        localStorage.setItem('shopify_dashboard_payment', text);
+                        processPaymentData(text, true);
+                    } else {
+                        alert("올바른 Shopify CSV 형식이 아닙니다.");
+                        return;
+                    }
 
+                    if (dbInstance && window.FirebaseAPI && isEmailUser) {
+                        const { doc, setDoc } = window.FirebaseAPI;
+                        try {
+                            setIsSyncing(true);
+                            const dataDocRef = doc(dbInstance, 'artifacts', appIdStr, 'public', 'data', 'csv_data', 'latest');
+                            const payload = {};
+                            if (text.includes('앱설치일')) payload.onboardingCsv = text;
+                            if (text.includes('신청 플랜')) payload.paymentCsv = text;
+                            
+                            await setDoc(dataDocRef, payload, { merge: true });
+                            setIsSyncing(false);
+                            alert("성공적으로 클라우드에 업로드되었습니다! 이제 다른 사람들도 데이터를 볼 수 있습니다.");
+                        } catch (err) {
+                            console.error("Cloud upload error:", err);
+                            alert("클라우드 저장 권한이 없습니다. 관리자 권한을 확인해주세요.");
+                            setIsSyncing(false);
+                        }
+                    }
+                };
+                reader.readAsText(file);
+                e.target.value = null;
+            };
+
+            const processOnboardingData = (csvText, isNewUpload = false) => {
+                try {
+                    const lines = csvText.split('\n').filter(l => l.trim().length > 5);
+                    if (lines.length < 1) return;
+                    const headers = parseCSVLine(lines[0]);
+                    const idxDate = headers.findIndex(h => h.trim().includes('앱설치일'));
+                    const idxCountry = headers.findIndex(h => h.trim().includes('국가'));
+                    const idxUn = headers.findIndex(h => h.trim().includes('앱 삭제'));
+                    const idxCl = headers.findIndex(h => h.trim().includes('Store closed'));
+                    const idxS1 = headers.findIndex(h => h.trim().startsWith('1)'));
+                    const idxS2_1 = headers.findIndex(h => h.trim().startsWith('2-1)'));
+                    const idxS2_2 = headers.findIndex(h => h.trim().startsWith('2-2)'));
+                    const idxS2_3 = headers.findIndex(h => h.trim().startsWith('2-3)'));
+                    const idxS3 = headers.findIndex(h => h.trim().startsWith('3)'));
+                    const idxExp = headers.findIndex(h => h.trim().includes('위젯 노출여부'));
+                    const idxChurn = headers.findIndex(h => h.trim().includes('이탈일'));
+                    const idxPaid = headers.findIndex(h => h.trim().includes('유료 결제'));
+
+                    const dateRegex = /(\d{4})[\.\-\/]\s*(\d{1,2})[\.\-\/]\s*(\d{1,2})/;
+                    const rows = [];
+                    lines.slice(1).forEach(line => {
+                        const cols = parseCSVLine(line);
+                        if (!cols[idxDate]) return;
+                        const match = cols[idxDate].replace(/["']/g, '').trim().match(dateRegex);
+                        if (!match) return;
+                        const yr = Number(match[1]), mo = Number(match[2]), dy = Number(match[3]);
+                        const dObj = new Date(yr, mo - 1, dy);
+                        const dStr = `${yr}-${String(mo).padStart(2, '0')}-${String(dy).padStart(2, '0')}`;
+                        const isT = (v) => v && (v.replace(/["']/g, '').trim().toUpperCase() === 'TRUE');
+                        let chDate = null;
+                        if (idxChurn !== -1 && cols[idxChurn]) {
+                            const cMatch = cols[idxChurn].replace(/["']/g, '').trim().match(dateRegex);
+                            if (cMatch) chDate = new Date(Number(cMatch[1]), Number(cMatch[2])-1, Number(cMatch[3]));
+                        }
+                        rows.push({
+                            rawDate: dObj, dateStr: dStr, yr, mo, country: cols[idxCountry]?.replace(/["']/g, '').trim() || 'Unknown',
+                            uninstalled: isT(cols[idxUn]), closed: isT(cols[idxCl]), paid: isT(cols[idxPaid]),
+                            s1: isT(cols[idxS1]), s2_1: isT(cols[idxS2_1]), s2_2: isT(cols[idxS2_2]), s2_3: isT(cols[idxS2_3]), s3: isT(cols[idxS3]), exp: isT(cols[idxExp]),
+                            churnDate: chDate
+                        });
+                    });
+
+                    setRawOnboardingRows(rows);
+                    setHasOnboardingData(true);
+                } catch (e) { console.error(e); }
+            };
+
+            const processPaymentData = (csvText, isNewUpload = false) => {
+                try {
+                    const lines = csvText.split('\n').filter(l => l.trim().length > 2);
+                    const headers = parseCSVLine(lines[0]);
+                    const idxPlan = headers.findIndex(h => h.trim().includes('신청 플랜'));
+                    const idxCancel = headers.findIndex(h => h.trim().includes('해지'));
+                    const planCounts = { 'Flexible': 0, 'Unlimited 30': 0, 'Unlimited 365': 0 };
+                    let activeTotal = 0; let addedTotal = 0; let cancelledTotal = 0;
+
+                    lines.slice(1).forEach(line => {
+                        const cols = parseCSVLine(line);
+                        const pNameRaw = cols[idxPlan]?.replace(/["']/g, '').trim();
+                        const pName = pNameRaw?.toLowerCase();
+                        let isCancelled = false;
+                        if (idxCancel !== -1 && cols[idxCancel]) {
+                            const cancelVal = cols[idxCancel].replace(/["']/g, '').trim().toUpperCase();
+                            if (cancelVal && cancelVal !== 'FALSE' && cancelVal !== '0') isCancelled = true;
+                        }
+
+                        if (pName) {
+                            addedTotal++;
+                            if (isCancelled) {
+                                cancelledTotal++;
+                            } else {
+                                activeTotal++;
+                                if (pName.includes('flexible')) { planCounts['Flexible']++; }
+                                else if (pName.includes('30')) { planCounts['Unlimited 30']++; }
+                                else if (pName.includes('365')) { planCounts['Unlimited 365']++; }
+                            }
+                        }
+                    });
+                    setPlanData([
+                        { name: 'Flexible', count: planCounts['Flexible'], color: '#fbbf24' },
+                        { name: 'Unlimited 30', count: planCounts['Unlimited 30'], color: '#3b82f6' },
+                        { name: 'Unlimited 365', count: planCounts['Unlimited 365'], color: '#4f46e5' }
+                    ]);
+                    setTotalPaidUsers(activeTotal);
+                    setPaidAdded(addedTotal);
+                    setPaidCancelled(cancelledTotal);
+                    setHasPaymentData(true);
+                } catch (e) { console.error(e); }
+            };
+
+            useEffect(() => {
+                if (!rawOnboardingRows || rawOnboardingRows.length === 0) return;
+
+                let filteredRows = rawOnboardingRows;
+                if (filterStartDate) { const sDate = new Date(filterStartDate); filteredRows = filteredRows.filter(r => r.rawDate >= sDate); }
+                if (filterEndDate) { const eDate = new Date(filterEndDate); eDate.setHours(23, 59, 59, 999); filteredRows = filteredRows.filter(r => r.rawDate <= eDate); }
+
+                const mapToFinalData = (map) => Array.from(map.entries()).sort().map(([label, d]) => ({
+                    label: String(label), newInstalls: d.n, uninstalls: d.un, storeClosed: d.cl, paid: d.pd,
+                    earlyUninstalls: d.earlyUn, earlyClosed: d.earlyCl,
+                    s1: d.s1, s2_1: d.s2_1, s2_2: d.s2_2, s2_3: d.s2_3, s3: d.s3, exp: d.exp,
+                    step1: d.n ? (d.s1/d.n*100).toFixed(1) : "0.0",
+                    step2_1: d.n ? (d.s2_1/d.n*100).toFixed(1) : "0.0",
+                    step2_2: d.n ? (d.s2_2/d.n*100).toFixed(1) : "0.0",
+                    step2_3: d.n ? (d.s2_3/d.n*100).toFixed(1) : "0.0",
+                    step3: d.n ? (d.s3/d.n*100).toFixed(1) : "0.0",
+                    exposedRate: d.n ? (d.exp/d.n*100).toFixed(1) : "0.0", netInstalls: Math.max(0, d.n - d.un - d.cl),
+                    retentionRate: d.n ? (((Math.max(0, d.n - d.un - d.cl))/d.n)*100).toFixed(1) : "0.0",
+                    earlyChurnRate: d.n ? ((d.earlyUn / d.n) * 100).toFixed(1) : "0.0"
+                }));
+
+                const dayMap = new Map(); const weekMap = new Map(); const monthMap = new Map();
+                const getWkKey = (d) => { const mon = new Date(d); const diff = mon.getDate() - mon.getDay() + (mon.getDay() === 0 ? -6 : 1); mon.setDate(diff); return `${mon.getFullYear()}-${String(mon.getMonth()+1).padStart(2,'0')}-${String(mon.getDate()).padStart(2,'0')}`; };
+                filteredRows.forEach(r => {
+                    const keys = [r.dateStr, getWkKey(r.rawDate), `${r.yr}-${String(r.mo).padStart(2, '0')}`];
+                    const maps = [dayMap, weekMap, monthMap];
+                    let isEarlyChurn = false;
+                    if (r.churnDate) {
+                        const days = Math.ceil(Math.abs(r.churnDate - r.rawDate) / (1000 * 60 * 60 * 24));
+                        if (days <= 1) isEarlyChurn = true;
+                    }
+
+                    keys.forEach((k, idx) => {
+                        if(!maps[idx].has(k)) maps[idx].set(k, { n: 0, un: 0, cl: 0, earlyUn: 0, earlyCl: 0, s1:0, s2_1:0, s2_2:0, s2_3:0, s3:0, exp:0, pd:0 });
+                        const m = maps[idx].get(k);
+                        m.n++;
+                        if(r.uninstalled) { m.un++; if(isEarlyChurn) m.earlyUn++; }
+                        if(r.closed) { m.cl++; if(isEarlyChurn) m.earlyCl++; }
+                        if(r.s1) m.s1++; if(r.s2_1) m.s2_1++; if(r.s2_2) m.s2_2++; if(r.s2_3) m.s2_3++; if(r.s3) m.s3++; if(r.exp) m.exp++; if(r.paid) m.pd++;
+                    });
+                });
+                setDailyStats(mapToFinalData(dayMap)); setWeeklyData(mapToFinalData(weekMap)); setMonthlyStats(mapToFinalData(monthMap));
+
+                const calcStats = (arr) => ({ base: arr.length, s1: arr.filter(x => x.s1).length, s2_1: arr.filter(x => x.s2_1).length, s2_2: arr.filter(x => x.s2_2).length, s2_3: arr.filter(x => x.s2_3).length, s3: arr.filter(x => x.s3).length, exp: arr.filter(x => x.exp).length });
+                const cL = calcStats(filteredRows.filter(r => r.dateStr <= '2025-12-28'));
+                const cI1 = calcStats(filteredRows.filter(r => r.dateStr >= '2025-12-29' && r.dateStr <= '2026-02-01'));
+                const cI2 = calcStats(filteredRows.filter(r => r.dateStr >= '2026-02-02'));
+                const getRates = (c, k, pk) => {
+                    const rate = c.base > 0 ? (c[k]/c.base*100).toFixed(1) : "0.0";
+                    const prevCount = pk === 'base' ? c.base : c[pk];
+                    const prevRate = prevCount > 0 ? (c[k]/prevCount*100).toFixed(1) : "0.0";
+                    return { rate, prev: prevRate };
+                };
+
+                setCompStats([{ label: '1. 정보 확인', k: 's1', pk: 'base' }, { label: '2-1. 색상 선택', k: 's2_1', pk: 's1' }, { label: '2-2. Core Snippet', k: 's2_2', pk: 's2_1' }, { label: '2-3. 위젯 설치', k: 's2_3', pk: 's2_2' }, { label: '3. 완료 (최종)', k: 's3', pk: 's2_3' }, { label: '▶ 위젯 노출 여부', k: 'exp', pk: 's3' }].map(item => {
+                    const d1 = getRates(cL, item.k, item.pk); const d2 = getRates(cI1, item.k, item.pk); const d3 = getRates(cI2, item.k, item.pk);
+                    return { step: item.label, legacy: d1, imp1: d2, imp2: d3, diff: (parseFloat(d3.rate)-parseFloat(d1.rate)).toFixed(1) };
+                }));
+
+                const countryMapLocal = new Map();
+                filteredRows.forEach(r => {
+                    const cKey = r.country || 'Unknown';
+                    if (!countryMapLocal.has(cKey)) countryMapLocal.set(cKey, { n: 0, un: 0, cl: 0, s3: 0, exp: 0, pd: 0 });
+                    const c = countryMapLocal.get(cKey);
+                    c.n++; if(r.uninstalled) c.un++; if(r.closed) c.cl++; if(r.s3) c.s3++; if(r.exp) c.exp++; if(r.paid) c.pd++;
+                });
+                let sortedCountries = Array.from(countryMapLocal.entries()).map(([country, d]) => ({ country, newInstalls: d.n, uninstalls: d.un, storeClosed: d.cl, s3: d.s3, exp: d.exp, paid: d.pd })).sort((a,b) => b.newInstalls - a.newInstalls);
+                const top10 = sortedCountries.slice(0, 10); const othersRaw = sortedCountries.slice(10);
+                let finalCountryStats = top10;
+                if (othersRaw.length > 0) {
+                    const othersObj = othersRaw.reduce((acc, curr) => ({ country: '기타 (Others)', newInstalls: acc.newInstalls + curr.newInstalls, uninstalls: acc.uninstalls + curr.uninstalls, storeClosed: acc.storeClosed + curr.storeClosed, s3: acc.s3 + curr.s3, exp: acc.exp + curr.exp, paid: acc.paid + curr.paid }), { country: '기타 (Others)', newInstalls: 0, uninstalls: 0, storeClosed: 0, s3: 0, exp: 0, paid: 0 });
+                    finalCountryStats = [...top10, othersObj];
+                }
+                setCountryStats(finalCountryStats.map(d => ({ ...d, uninstallRate: d.newInstalls ? ((d.uninstalls/d.newInstalls)*100).toFixed(1) : "0.0", closedRate: d.newInstalls ? ((d.storeClosed/d.newInstalls)*100).toFixed(1) : "0.0", onboardingRate: d.newInstalls ? ((d.s3/d.newInstalls)*100).toFixed(1) : "0.0", exposedRate: d.newInstalls ? ((d.exp/d.newInstalls)*100).toFixed(1) : "0.0", paidRate: d.newInstalls ? ((d.paid/d.newInstalls)*100).toFixed(1) : "0.0", retentionRate: d.newInstalls ? (((Math.max(0, d.newInstalls - d.uninstalls - d.storeClosed))/d.newInstalls)*100).toFixed(1) : 0 })));
             }, [rawOnboardingRows, filterStartDate, filterEndDate]);
 
-
-
             const totalInstalls = useMemo(() => weeklyData.reduce((acc, curr) => acc + (Number(curr.newInstalls) || 0), 0), [weeklyData]);
-
             const totalCompleted = useMemo(() => weeklyData.reduce((acc, curr) => acc + (Number(curr.s3) || 0), 0), [weeklyData]);
-
             const onboardingRate = useMemo(() => totalInstalls > 0 ? ((totalCompleted / totalInstalls) * 100).toFixed(1) : "0.0", [totalInstalls, totalCompleted]);
 
-
-
             const activeTrendData = useMemo(() => { const source = trendViewMode === 'daily' ? dailyStats : trendViewMode === 'weekly' ? weeklyData : monthlyStats; return (!source || source.length === 0) ? INITIAL_DATA : source.map(d => ({ label: d.label, installs: d.newInstalls, uninstalls: d.uninstalls, closed: d.storeClosed, paid: d.paid, retentionRate: d.retentionRate })); }, [trendViewMode, dailyStats, weeklyData, monthlyStats]);
-
-            const activeEarlyChurnData = useMemo(() => { const source = earlyChurnViewMode === 'daily' ? dailyStats : earlyChurnViewMode === 'weekly' ? weeklyData : monthlyStats; return (!source || source.length === 0) ? INITIAL_DATA : source.map(d => ({ label: d.label, installs: d.newInstalls, earlyUninstalls: d.earlyUninstalls, earlyClosed: d.earlyClosed, earlyChurnRate: d.earlyChurnRate })); }, [earlyChurnViewMode, dailyStats, weeklyData, monthlyStats]);
-
             const activeOnboardingData = useMemo(() => { const source = onboardingViewMode === 'daily' ? dailyStats : onboardingViewMode === 'weekly' ? weeklyData : monthlyStats; return source && source.length > 0 ? source : INITIAL_DATA; }, [onboardingViewMode, dailyStats, weeklyData, monthlyStats]);
-
             const activeSummaryData = useMemo(() => { const source = summaryViewMode === 'daily' ? dailyStats : summaryViewMode === 'weekly' ? weeklyData : monthlyStats; return source && source.length > 0 ? source.slice().reverse() : []; }, [summaryViewMode, dailyStats, weeklyData, monthlyStats]);
-
             
-
             const cohortChartData = useMemo(() => {
-
                 if (!compStats || compStats.length === 0) return [];
-
                 const cohorts = ['기존 (Legacy)', '1차 개선', '2차 개선 (현재)']; const cohortKeys = ['legacy', 'imp1', 'imp2'];
-
                 return cohorts.map((cohortName, idx) => {
-
                     const key = cohortKeys[idx]; const dataPoint = { name: cohortName, groupKey: key };
-
                     compStats.forEach(stat => { dataPoint[stat.step] = parseFloat(stat[key].rate); dataPoint[`${stat.step}_prev`] = stat[key].prev; dataPoint[`${stat.step}_legacy`] = stat.legacy.rate; });
-
                     return dataPoint;
-
                 });
-
             }, [compStats]);
 
-
-
             return (
-
-                <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-800 text-[13px]">
-
+                <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-800 text-[13px] flex flex-col">
                     <style>{CustomScrollbarStyle}</style>
-
-                    <header className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-
+                    <header className="max-w-7xl mx-auto w-full mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
                         <div>
-
                             <h1 className="text-3xl font-black text-slate-900 tracking-tight uppercase">Shopify Growth Dashboard</h1>
-
                             <div className="flex gap-2 mt-2">
-
                                 {hasOnboardingData && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-full flex items-center"><FileText className="w-3 h-3 mr-1" /> 온보딩 활성</span>}
-
                                 {hasPaymentData && <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full flex items-center"><CreditCard className="w-3 h-3 mr-1" /> 결제 활성</span>}
-
                                 
-
                                 {cloudStatus === 'connected' && <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded-full flex items-center shadow-sm border border-indigo-200"><Cloud className="w-3 h-3 mr-1" /> 클라우드 공유됨</span>}
-
-                                {cloudStatus === 'local' && <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold rounded-full flex items-center shadow-sm" title="코드 상단에 Firebase 설정을 넣어야 타인과 공유됩니다."><CloudOff className="w-3 h-3 mr-1" /> 로컬 전용 (공유 불가)</span>}
-
+                                {cloudStatus === 'local' && <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold rounded-full flex items-center shadow-sm"><CloudOff className="w-3 h-3 mr-1" /> 로컬 전용 (공유 불가)</span>}
                                 {cloudStatus === 'error' && <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full flex items-center"><CloudOff className="w-3 h-3 mr-1" /> 클라우드 에러</span>}
-
                             </div>
-
                         </div>
-
-                        <div className="flex gap-2">
-
+                        
+                        <div className="flex items-center gap-3">
+                            {user && user.email ? (
+                                <span className="text-xs font-bold text-indigo-600 flex items-center bg-indigo-50 px-3 py-2 rounded-xl border border-indigo-100">
+                                    <Unlock className="w-4 h-4 mr-1"/> 관리자 모드
+                                </span>
+                            ) : (
+                                <button onClick={handleAdminLogin} className="flex items-center text-xs font-bold text-slate-500 hover:text-indigo-600 bg-white border border-slate-200 hover:border-indigo-300 px-3 py-2 rounded-xl transition shadow-sm" title="데이터를 저장하고 공유하려면 로그인하세요.">
+                                    <Lock className="w-4 h-4 mr-1" /> 관리자 로그인
+                                </button>
+                            )}
+                            
                             <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
-
                             <button
-
                                 onClick={() => fileInputRef.current.click()}
-
                                 disabled={isSyncing}
-
                                 className="flex items-center px-4 py-2 bg-slate-800 text-white rounded-xl font-bold text-sm shadow-lg hover:bg-slate-700 transition ring-2 ring-slate-200 ring-offset-2 tracking-tight disabled:opacity-50"
-
                             >
-
-                                {isSyncing ? "저장 중..." : <span className="flex items-center"><Upload className="w-4 h-4 mr-2" /> 데이터 업로드</span>}
-
+                                {isSyncing ? "불러오는 중..." : <span className="flex items-center"><Upload className="w-4 h-4 mr-2" /> 데이터 업로드</span>}
                             </button>
-
                         </div>
-
                     </header>
 
-
-
-                    <div className="max-w-7xl mx-auto mb-6 flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-white p-3 rounded-2xl shadow-sm border border-slate-200">
-
+                    <div className="max-w-7xl mx-auto w-full mb-6 flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-white p-3 rounded-2xl shadow-sm border border-slate-200">
                         <span className="text-xs font-bold text-slate-600 flex items-center px-2"><CalendarDays className="w-4 h-4 mr-1.5" /> 데이터 조회 기간</span>
-
                         <div className="flex items-center">
-
                             <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="text-xs font-mono font-bold text-slate-600 px-3 py-1.5 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" />
-
                             <span className="text-slate-300 mx-2 font-black">-</span>
-
                             <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="text-xs font-mono font-bold text-slate-600 px-3 py-1.5 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" />
-
                         </div>
-
                         {(filterStartDate || filterEndDate) && (
-
                             <button onClick={() => {setFilterStartDate(''); setFilterEndDate('');}} className="text-[11px] text-red-500 bg-red-50 hover:bg-red-100 transition rounded-lg font-bold px-3 py-1.5 ml-2">초기화</button>
-
                         )}
-
                         <span className="text-[10px] text-slate-400 ml-auto hidden md:block">그래프 영역을 드래그하여 좌우로 스크롤 할 수 있습니다.</span>
-
                     </div>
-
-
 
                     {!hasOnboardingData && (
-
-                        <div className="max-w-7xl mx-auto mb-6 p-8 bg-white border-2 border-dashed border-slate-300 rounded-2xl text-center shadow-sm">
-
+                        <div className="max-w-7xl mx-auto w-full mb-6 p-8 bg-white border-2 border-dashed border-slate-300 rounded-2xl text-center shadow-sm">
                             <CloudOff className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-
                             <p className="text-slate-600 font-bold text-lg mb-2">데이터가 없습니다.</p>
-
-                            <p className="text-slate-400 font-medium text-sm mb-4">우측 상단의 [데이터 업로드] 버튼을 눌러 CSV 파일을 등록해주세요.</p>
-
-                            {cloudStatus === 'local' && (
-
-                                <div className="inline-block bg-amber-50 text-amber-700 px-4 py-3 rounded-xl text-xs font-medium text-left max-w-md border border-amber-200">
-
-                                    <strong className="block mb-1 text-amber-800 text-sm">⚠️ Vercel 배포 시 주의사항</strong>
-
-                                    제미나이 보안 정책상 배포된 링크에서는 데이터베이스가 차단됩니다.<br/>
-
-                                    다른 사람과 실시간 공유를 원하시면 코드 90번째 줄의 <code>MY_FIREBASE_CONFIG</code>에 본인의 파이어베이스 설정을 꼭 넣어주세요!
-
-                                </div>
-
-                            )}
-
+                            <p className="text-slate-400 font-medium text-sm mb-4">관리자가 데이터를 등록하지 않았거나, 접속 중입니다.</p>
+                            <div className="inline-block bg-indigo-50 text-indigo-700 px-4 py-3 rounded-xl text-xs font-medium text-left max-w-md border border-indigo-200 mt-2">
+                                <strong className="block mb-1 text-indigo-800 text-sm">💡 관리자이신가요?</strong>
+                                데이터를 다른 사람에게 공유하려면, 우측 상단의 <b>[관리자 로그인]</b>을 통해 로그인한 후 데이터를 업로드 해주세요.
+                            </div>
                         </div>
-
                     )}
-
-
 
                     {hasOnboardingData && (
-
-                    <div className="max-w-7xl mx-auto space-y-6">
-
+                    <div className="max-w-7xl mx-auto w-full space-y-6 flex-grow">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
                             <MetricCard title="Total Installs (누적)" value={totalInstalls.toLocaleString()} subtext="분석 기간 전체 가입" icon={Users} trend={null} />
-
                             <MetricCard title="Onboarding Completed (누적)" value={totalCompleted.toLocaleString()} subtext={`설치 대비 완료율 ${onboardingRate}%`} icon={CheckCircle} trend={null} />
-
                             <MetricCard
-
                                 title="Total Paid Users (Active)"
-
                                 value={totalPaidUsers.toLocaleString()}
-
                                 subtext="해지 제외 현재 유지 고객사"
-
                                 icon={DollarSign}
-
                                 customTrend={
-
                                     hasPaymentData ? (
-
                                         <div className="flex gap-2">
-
                                             <span className="flex items-center text-[11px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded" title="추가된 고객사">
-
                                                 <ArrowUpRight className="w-3 h-3 mr-0.5" />{paidAdded}
-
                                             </span>
-
                                             <span className="flex items-center text-[11px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded" title="해지된 고객사">
-
                                                 <ArrowDownRight className="w-3 h-3 mr-0.5" />{paidCancelled}
-
                                             </span>
-
                                         </div>
-
                                     ) : null
-
                                 }
-
                             />
-
                         </div>
-
-
 
                         {/* 1. 앱 설치 및 이탈 추이 */}
-
                         <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
-
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-
                                 <h3 className="text-lg font-bold flex items-center text-slate-800">
-
                                     <Calendar className="w-5 h-5 text-indigo-500 mr-3" />
-
                                     앱 설치, 이탈 및 유료 결제 추이
-
                                 </h3>
-
                                 <ViewModeSelector mode={trendViewMode} setMode={setTrendViewMode} />
-
                             </div>
-
                             <div className="h-80 w-full relative">
-
                                 <DraggableChartContainer dataLength={activeTrendData.length} mode={trendViewMode}>
-
                                     <ResponsiveContainer width="100%" height="100%">
-
                                         <ComposedChart data={activeTrendData} margin={{ top: 20, left: -20, right: -10 }} barGap={2}>
-
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-
                                             <XAxis dataKey="label" tick={{fontSize: 10, fontWeight: 600}} axisLine={false} tickLine={false} />
-
                                             <YAxis yAxisId="left" tick={{fontSize: 11}} axisLine={false} tickLine={false} />
-
                                             <YAxis yAxisId="right" orientation="right" tick={{fontSize: 10, fill: '#10b981'}} axisLine={false} tickLine={false} domain={[0, 100]} unit="%" />
-
                                             <Tooltip />
-
                                             <Legend iconType="circle" wrapperStyle={{paddingTop: '20px', fontSize: '11px'}} />
-
                                             <Bar yAxisId="left" dataKey="installs" name="신규 설치" fill="#818cf8" radius={[4, 4, 0, 0]} barSize={12}>
-
                                                 <LabelList dataKey="installs" position="top" offset={5} style={{ fontSize: '10px', fill: '#4f46e5', fontWeight: 'bold' }} formatter={(v) => v > 0 ? v : ''} />
-
                                             </Bar>
-
                                             <Bar yAxisId="left" dataKey="paid" name="유료 결제" fill="#0ea5e9" radius={[4, 4, 0, 0]} barSize={12}>
-
                                                 <LabelList dataKey="paid" position="top" offset={5} style={{ fontSize: '10px', fill: '#0284c7', fontWeight: 'bold' }} formatter={(v) => v > 0 ? v : ''} />
-
                                             </Bar>
-
                                             <Bar yAxisId="left" dataKey="uninstalls" name="앱 삭제" fill="#f87171" radius={[4, 4, 0, 0]} barSize={12} />
-
                                             <Bar yAxisId="left" dataKey="closed" name="폐업" fill="#eab308" radius={[4, 4, 0, 0]} barSize={12} />
-
                                             <Line yAxisId="right" type="monotone" dataKey="retentionRate" name="순 설치 유지율 (%)" stroke="#10b981" strokeWidth={2} strokeDasharray="4 4" dot={{r: 3, fill: '#10b981'}}>
-
                                                 <LabelList dataKey="retentionRate" position="top" offset={8} style={{ fontSize: '10px', fill: '#059669', fontWeight: 'bold' }} formatter={(v) => v > 0 ? `${v}%` : ''} />
-
                                             </Line>
-
                                         </ComposedChart>
-
                                     </ResponsiveContainer>
-
                                 </DraggableChartContainer>
-
                             </div>
-
                         </div>
-
-
 
                         {/* 2. 온보딩 단계별 완료율 */}
-
                         <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
-
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-
                                 <h3 className="text-lg font-bold flex items-center text-slate-800">
-
                                     <span className="w-1.5 h-5 bg-indigo-500 rounded-full mr-3"></span>
-
                                     온보딩 단계별 완료율
-
                                 </h3>
-
                                 <ViewModeSelector mode={onboardingViewMode} setMode={setOnboardingViewMode} />
-
                             </div>
-
                             <div className="h-80 w-full relative">
-
                                 <DraggableChartContainer dataLength={activeOnboardingData.length} mode={onboardingViewMode}>
-
                                     <ResponsiveContainer width="100%" height="100%">
-
                                         <LineChart data={activeOnboardingData} margin={{ left: -20, top: 10, right: 10 }}>
-
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-
                                             <XAxis dataKey="label" tick={{fontSize: 11, fontWeight: 600}} axisLine={false} tickLine={false} />
-
                                             <YAxis domain={[0, 100]} tick={{fontSize: 11}} axisLine={false} tickLine={false} />
-
                                             <Tooltip />
-
                                             <Legend iconType="circle" wrapperStyle={{paddingTop: '20px', fontSize: '11px'}} />
-
                                             <Line type="monotone" dataKey="step1" name="1.정보 확인" stroke="#94a3b8" strokeDasharray="5 5" dot={false} strokeWidth={1.5} />
-
                                             <Line type="monotone" dataKey="step2_1" name="2-1.색상 선택" stroke="#818cf8" strokeWidth={1.5} dot={{r:2}} />
-
                                             <Line type="monotone" dataKey="step2_2" name="2-2.Core Snippet" stroke="#6366f1" strokeWidth={1.5} dot={{r:2}} />
-
                                             <Line type="monotone" dataKey="step2_3" name="2-3.위젯 설치" stroke="#4f46e5" strokeWidth={1.5} dot={{r:2}} />
-
                                             <Line type="monotone" dataKey="step3" name="3.완료" stroke="#10b981" strokeWidth={3} dot={true} />
-
                                             <Line type="monotone" dataKey="exposedRate" name="▶ 위젯 노출" stroke="#f59e0b" strokeWidth={2} dot={{r:4}} />
-
                                         </LineChart>
-
                                     </ResponsiveContainer>
-
                                 </DraggableChartContainer>
-
                             </div>
-
                         </div>
-
-
 
                         {/* 4. 온보딩 단계별 개선 추이 (그룹별 비교) */}
-
                         <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
-
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-
                                 <h3 className="text-lg font-bold flex items-center text-slate-900">
-
                                     <Zap className="w-5 h-5 text-amber-500 mr-3" fill="currentColor" />
-
                                     온보딩 단계별 개선 추이 (그룹별 비교)
-
                                 </h3>
-
                                 {cohortFocus && (
-
                                     <button onClick={() => setCohortFocus(null)} className="text-[10px] bg-slate-800 text-white px-2 py-1 rounded flex items-center hover:bg-slate-700 transition">
-
                                         <Filter className="w-3 h-3 mr-1" /> 필터 초기화
-
                                     </button>
-
                                 )}
-
                             </div>
-
                             <div className="h-[450px]">
-
                                 <ResponsiveContainer width="100%" height="100%">
-
                                     <BarChart data={cohortChartData} margin={{ top: 20, right: 30, left: -20, bottom: 5 }} barCategoryGap="25%" barGap={6}>
-
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-
                                         <XAxis dataKey="name" tick={{fontSize: 11, fontWeight: 'bold', fill: '#475569'}} axisLine={false} tickLine={false} />
-
                                         <YAxis domain={[0, 100]} tick={{fontSize: 11}} axisLine={false} tickLine={false} unit="%" />
-
                                         <Tooltip />
-
                                         <Legend iconType="circle" wrapperStyle={{paddingTop: '20px', fontSize: '11px', fontWeight: 'bold'}} onClick={(e) => setCohortFocus(prev => prev === e.value ? null : e.value)} cursor="pointer" />
-
                                         {Object.entries(COHORT_COLORS).map(([name, color]) => (
-
                                             <Bar key={name} dataKey={name} fill={color} radius={[4, 4, 0, 0]} barSize={26} hide={cohortFocus && cohortFocus !== name} onClick={() => setCohortFocus(prev => prev === name ? null : name)} cursor="pointer">
-
                                                 <LabelList dataKey={name} position="top" offset={5} style={{ fontSize: '9px', fill: color, fontWeight: 'bold' }} formatter={(v) => v > 0 ? `${v}%` : ''} />
-
                                             </Bar>
-
                                         ))}
-
                                     </BarChart>
-
                                 </ResponsiveContainer>
-
                             </div>
-
                         </div>
-
-
 
                         {/* 5. 국가별 현황 */}
-
                         <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
-
                             <h3 className="text-lg font-bold mb-6 flex items-center text-slate-800"><Globe className="w-5 h-5 text-blue-500 mr-3" />국가별 가입 규모 및 전환 현황</h3>
-
                             {countryStats && countryStats.length > 0 ? (
-
                                 <div className="h-[480px]">
-
                                     <ResponsiveContainer width="100%" height="100%">
-
                                         <ComposedChart data={countryStats} margin={{ top: 10, right: 0, left: 0, bottom: 30 }}>
-
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-
                                             <XAxis dataKey="country" tick={{fontSize: 11, fontWeight: 'bold', fill: '#475569'}} interval={0} angle={-30} textAnchor="end" height={60} />
-
                                             <YAxis yAxisId="left" tick={{fontSize: 11}} axisLine={false} tickLine={false} />
-
                                             <YAxis yAxisId="right" orientation="right" domain={[0, 100]} unit="%" tick={{fontSize: 11, fill: '#10b981'}} axisLine={false} tickLine={false} />
-
                                             <Tooltip />
-
                                             <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 'bold', paddingBottom: '20px' }} />
-
                                             <Bar yAxisId="left" dataKey="newInstalls" name="전체 가입 수" fill="#e0e7ff" radius={[4, 4, 0, 0]} barSize={24} />
-
                                             <Bar yAxisId="left" dataKey="s3" name="온보딩 완료" fill="#818cf8" radius={[4, 4, 0, 0]} barSize={24} />
-
                                             <Line yAxisId="right" type="monotone" dataKey="retentionRate" name="순 설치 유지율 (%)" stroke="#10b981" strokeWidth={2} dot={{r: 4, fill: '#10b981'}} strokeDasharray="4 4" />
-
                                             <Line yAxisId="right" type="monotone" dataKey="onboardingRate" name="온보딩 완료율 (%)" stroke="#4338ca" strokeWidth={2} dot={{r: 3, fill: '#4338ca'}} strokeDasharray="4 4" />
-
                                         </ComposedChart>
-
                                     </ResponsiveContainer>
-
                                 </div>
-
                             ) : <div className="h-64 flex items-center justify-center text-slate-400 font-sans">데이터가 없습니다.</div>}
-
                         </div>
-
-
 
                         {/* 6. 데이터 상세 요약 */}
-
                         <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 font-sans">
-
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 font-sans">
-
                                 <h3 className="text-lg font-bold flex items-center text-slate-800">
-
                                     <LayoutList className="w-5 h-5 text-indigo-500 mr-3" />
-
                                     데이터 상세 요약
-
                                 </h3>
-
                                 <ViewModeSelector mode={summaryViewMode} setMode={setSummaryViewMode} />
-
                             </div>
-
                             <div className="overflow-x-auto">
-
                                 <table className="w-full text-xs text-center border-collapse text-[11px] font-sans">
-
                                     <thead className="text-slate-400 border-b font-bold uppercase tracking-tighter text-[10px]">
-
                                         <tr>
-
                                             <th className="text-left py-3 px-2">{summaryViewMode === 'daily' ? '일자' : summaryViewMode === 'weekly' ? '주차' : '월'}</th>
-
                                             <th className="px-2">신규 설치</th>
-
                                             <th className="px-2 text-red-400">삭제</th>
-
                                             <th className="px-2 text-yellow-500">폐업</th>
-
                                             <th className="px-2 text-indigo-600 font-black">순 설치 (잔존)</th>
-
                                             <th className="px-2 text-emerald-600 font-black">완료율 (%)</th>
-
                                             <th className="px-2 text-indigo-400 font-black">위젯 노출 (%)</th>
-
                                             <th className="px-2 text-green-700 font-black">유료 결제</th>
-
                                         </tr>
-
                                     </thead>
-
                                     <tbody className="divide-y font-medium text-slate-600 font-mono font-sans">
-
                                         {activeSummaryData && activeSummaryData.length > 0 ? activeSummaryData.map((r, i) => (
-
                                             <tr key={i} className="hover:bg-slate-50/50 transition">
-
                                                 <td className="text-left py-4 px-2 font-bold text-slate-700 font-sans">{r.label}</td>
-
                                                 <td className="px-2 font-mono">{r.newInstalls}</td>
-
                                                 <td className="px-2 text-red-400 opacity-80 font-mono">{r.uninstalls}</td>
-
                                                 <td className="px-2 text-yellow-500 opacity-80 font-mono">{r.storeClosed}</td>
-
                                                 <td className="px-2 bg-indigo-50/20 text-indigo-600 font-black font-mono">{r.netInstalls}</td>
-
                                                 <td className="px-2 bg-emerald-50/30 text-emerald-700 font-bold font-mono">{r.step3}%</td>
-
                                                 <td className="px-2 text-indigo-400 font-bold font-mono">{r.exposedRate}%</td>
-
                                                 <td className="px-2 bg-green-50/30 text-green-700 font-black font-mono">{r.paid}</td>
-
                                             </tr>
-
                                         )) : <tr><td colSpan="8" className="py-10 text-center text-slate-400 font-sans">데이터가 없습니다.</td></tr>}
-
                                     </tbody>
-
                                 </table>
-
                             </div>
-
                         </div>
-
                     </div>
-
                     )}
-
                 </div>
-
             );
-
         }
-
-
 
         const rootElement = document.getElementById('root');
-
         if (ReactDOM.createRoot) {
-
             const root = ReactDOM.createRoot(rootElement);
-
             root.render(<App />);
-
         } else {
-
             ReactDOM.render(<App />, rootElement);
-
         }
-
     </script>
-
 </body>
-
 </html>
