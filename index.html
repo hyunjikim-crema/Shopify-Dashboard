@@ -163,7 +163,6 @@
 
             const fileInputRef = useRef(null);
 
-            // 초기 LocalStorage 캐시 먼저 수신
             useEffect(() => {
                 const cachedOnboarding = localStorage.getItem('shopify_dashboard_onboarding');
                 const cachedPayment = localStorage.getItem('shopify_dashboard_payment');
@@ -233,7 +232,7 @@
                 }
             };
 
-            // 🔥 Firestore Realtime Reader (데이터 덮어쓰기 문제 완벽 해결)
+            // Firestore Realtime Reader (클라우드 최신 데이터 동기화)
             useEffect(() => {
                 if (!dbInstance || !window.FirebaseAPI) return;
                 const { doc, onSnapshot } = window.FirebaseAPI;
@@ -245,7 +244,6 @@
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         
-                        // 서버의 최신 데이터를 로컬 스토리지에 동기화 및 렌더링
                         if (data.onboardingCsv) {
                             localStorage.setItem('shopify_dashboard_onboarding', data.onboardingCsv);
                             processOnboardingData(data.onboardingCsv, false);
@@ -265,19 +263,12 @@
                 return () => unsubscribe();
             }, [dbInstance, appIdStr]);
 
-            // 🔥 파일 업로드 및 Firestore 원자적 업데이트
+            // 🔥 업로드 로직 (서버 완전 승인 후 반영)
             const handleFileUpload = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
 
                 const isEmailUser = user && user.email;
-                if (!isEmailUser) {
-                    const confirmUpload = window.confirm("⚠️ 현재 '읽기 전용' 상태입니다.\n이 상태로 업로드하면 본인 화면에만 보이고 다른 사람에게는 공유되지 않습니다.\n\n계속 진행하시겠습니까?\n(공유를 원하시면 취소를 누르고 좌측 상단의 🔒 관리자 로그인을 먼저 진행하세요)");
-                    if (!confirmUpload) {
-                        e.target.value = null;
-                        return;
-                    }
-                }
 
                 const reader = new FileReader();
                 reader.onload = async (ev) => {
@@ -296,37 +287,48 @@
                         return;
                     }
 
-                    // 1. 로컬 저장 및 state 즉시 업데이트
-                    if (payload.onboardingCsv) {
-                        localStorage.setItem('shopify_dashboard_onboarding', payload.onboardingCsv);
-                        processOnboardingData(payload.onboardingCsv, true);
-                    }
-                    if (payload.paymentCsv) {
-                        localStorage.setItem('shopify_dashboard_payment', payload.paymentCsv);
-                        processPaymentData(payload.paymentCsv, true);
-                    }
-
-                    // 2. Firestore 동기화 (merge: true 및 갱신 타임스탬프 전달)
-                    if (dbInstance && window.FirebaseAPI) {
-                        if (!isEmailUser) {
-                            alert("로컬 화면에 반영되었습니다. (관리자 미로그인으로 클라우드에는 공유되지 않습니다)");
-                            return;
+                    // 관리자 미로그인 시 (로컬 전용)
+                    if (!isEmailUser) {
+                        alert("⚠️ 현재 읽기 전용 상태입니다.\n이 업로드는 본인 화면(로컬)에만 저장되며 타인에게는 공유되지 않습니다.");
+                        if (payload.onboardingCsv) {
+                            localStorage.setItem('shopify_dashboard_onboarding', payload.onboardingCsv);
+                            processOnboardingData(payload.onboardingCsv, true);
                         }
+                        if (payload.paymentCsv) {
+                            localStorage.setItem('shopify_dashboard_payment', payload.paymentCsv);
+                            processPaymentData(payload.paymentCsv, true);
+                        }
+                        return;
+                    }
 
+                    // 관리자 로그인 상태 - Firestore 서버 동기화
+                    if (dbInstance && window.FirebaseAPI) {
                         const { doc, setDoc } = window.FirebaseAPI;
                         try {
                             setIsSyncing(true);
                             const dataDocRef = doc(dbInstance, 'artifacts', appIdStr, 'public', 'data', 'csv_data', 'latest');
                             
-                            payload.updatedAt = Date.now(); // 데이터 변경 시 타임스탬프 갱신
+                            payload.updatedAt = Date.now();
 
+                            // 서버에 쓰기 요청 완료까지 기다림
                             await setDoc(dataDocRef, payload, { merge: true });
+
+                            // 서버 저장 성공 확인 후 LocalStorage 및 State 갱신
+                            if (payload.onboardingCsv) {
+                                localStorage.setItem('shopify_dashboard_onboarding', payload.onboardingCsv);
+                                processOnboardingData(payload.onboardingCsv, true);
+                            }
+                            if (payload.paymentCsv) {
+                                localStorage.setItem('shopify_dashboard_payment', payload.paymentCsv);
+                                processPaymentData(payload.paymentCsv, true);
+                            }
+
                             setIsSyncing(false);
-                            alert(`성공적으로 [${typeName}] 데이터가 클라우드에 업로드 및 저장되었습니다!`);
+                            alert(`✅ [${typeName}] 데이터가 클라우드 서버에 정상 저장되었습니다.\n이제 새로고침하거나 타인이 접속해도 최신 데이터가 유지됩니다.`);
                         } catch (err) {
                             console.error("Cloud upload error details:", err);
                             setIsSyncing(false);
-                            alert("클라우드 저장 권한 오류가 발생했습니다: " + err.message);
+                            alert("❌ 클라우드 서버 저장 실패!\n오류: " + err.message + "\n\nFirestore 보안 규칙 권한을 확인해주세요.");
                         }
                     }
                 };
