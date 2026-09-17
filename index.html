@@ -163,6 +163,7 @@
 
             const fileInputRef = useRef(null);
 
+            // 초기 LocalStorage 캐시 먼저 수신
             useEffect(() => {
                 const cachedOnboarding = localStorage.getItem('shopify_dashboard_onboarding');
                 const cachedPayment = localStorage.getItem('shopify_dashboard_payment');
@@ -232,7 +233,7 @@
                 }
             };
 
-            // Firestore Realtime Sync Reader
+            // 🔥 Firestore Realtime Reader (데이터 덮어쓰기 문제 완벽 해결)
             useEffect(() => {
                 if (!dbInstance || !window.FirebaseAPI) return;
                 const { doc, onSnapshot } = window.FirebaseAPI;
@@ -243,6 +244,8 @@
                 const unsubscribe = onSnapshot(dataDocRef, (docSnap) => {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
+                        
+                        // 서버의 최신 데이터를 로컬 스토리지에 동기화 및 렌더링
                         if (data.onboardingCsv) {
                             localStorage.setItem('shopify_dashboard_onboarding', data.onboardingCsv);
                             processOnboardingData(data.onboardingCsv, false);
@@ -262,7 +265,7 @@
                 return () => unsubscribe();
             }, [dbInstance, appIdStr]);
 
-            // 🔥 수정된 데이터 업로드 및 Firestore 저장 로직
+            // 🔥 파일 업로드 및 Firestore 원자적 업데이트
             const handleFileUpload = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -280,41 +283,50 @@
                 reader.onload = async (ev) => {
                     const text = ev.target.result;
                     const payload = {};
-                    let isOnboarding = false;
-                    let isPayment = false;
+                    let typeName = "";
 
                     if (text.includes('앱설치일')) {
-                        isOnboarding = true;
                         payload.onboardingCsv = text;
-                        localStorage.setItem('shopify_dashboard_onboarding', text);
-                        processOnboardingData(text, true);
+                        typeName = "온보딩";
                     } else if (text.includes('신청 플랜')) {
-                        isPayment = true;
                         payload.paymentCsv = text;
-                        localStorage.setItem('shopify_dashboard_payment', text);
-                        processPaymentData(text, true);
+                        typeName = "결제";
                     } else {
                         alert("올바른 Shopify CSV 형식이 아닙니다.");
                         return;
                     }
 
-                    // Firestore 업데이트 (merge: true 및 updatedAt 트리거 추가)
-                    if (dbInstance && window.FirebaseAPI && isEmailUser) {
+                    // 1. 로컬 저장 및 state 즉시 업데이트
+                    if (payload.onboardingCsv) {
+                        localStorage.setItem('shopify_dashboard_onboarding', payload.onboardingCsv);
+                        processOnboardingData(payload.onboardingCsv, true);
+                    }
+                    if (payload.paymentCsv) {
+                        localStorage.setItem('shopify_dashboard_payment', payload.paymentCsv);
+                        processPaymentData(payload.paymentCsv, true);
+                    }
+
+                    // 2. Firestore 동기화 (merge: true 및 갱신 타임스탬프 전달)
+                    if (dbInstance && window.FirebaseAPI) {
+                        if (!isEmailUser) {
+                            alert("로컬 화면에 반영되었습니다. (관리자 미로그인으로 클라우드에는 공유되지 않습니다)");
+                            return;
+                        }
+
                         const { doc, setDoc } = window.FirebaseAPI;
                         try {
                             setIsSyncing(true);
                             const dataDocRef = doc(dbInstance, 'artifacts', appIdStr, 'public', 'data', 'csv_data', 'latest');
                             
-                            // 갱신 타임스탬프 추가로 Firestore 변경 이벤트 확실히 발동
-                            payload.updatedAt = new Date().getTime();
+                            payload.updatedAt = Date.now(); // 데이터 변경 시 타임스탬프 갱신
 
                             await setDoc(dataDocRef, payload, { merge: true });
                             setIsSyncing(false);
-                            alert("성공적으로 클라우드에 업로드 및 갱신되었습니다!");
+                            alert(`성공적으로 [${typeName}] 데이터가 클라우드에 업로드 및 저장되었습니다!`);
                         } catch (err) {
-                            console.error("Cloud upload error:", err);
-                            alert("클라우드 저장 실패: " + err.message + "\n관리자 권한을 확인해주세요.");
+                            console.error("Cloud upload error details:", err);
                             setIsSyncing(false);
+                            alert("클라우드 저장 권한 오류가 발생했습니다: " + err.message);
                         }
                     }
                 };
