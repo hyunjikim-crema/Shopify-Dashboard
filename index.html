@@ -65,7 +65,7 @@
         const COHORT_COLORS = { '1. 정보 확인': '#94a3b8', '2-1. 색상 선택': '#60a5fa', '2-2. Core Snippet': '#3b82f6', '2-3. 위젯 설치': '#2563eb', '3. 완료 (최종)': '#10b981', '▶ 위젯 노출 여부': '#f59e0b' };
         const CustomScrollbarStyle = `.hide-scroll::-webkit-scrollbar { height: 6px; } .hide-scroll::-webkit-scrollbar-track { background: transparent; } .hide-scroll::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; } .hide-scroll { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }`;
 
-        // 🔥 Firebase 설정
+        // Firebase 설정
         const MY_FIREBASE_CONFIG = {
           apiKey: "AIzaSyBO9MxIcql3k1FkavklUMQy_vqwCThOd1M",
           authDomain: "shopify-dashboard-c4d46.firebaseapp.com",
@@ -194,8 +194,7 @@
                         try {
                             await signInAnonymously(fbAuth); 
                         } catch (err) {
-                            console.error("Anonymous Auth Failed (This is OK if public read is allowed):", err);
-                            // 에러가 나더라도 Firestore 읽기를 시도하도록 cloudStatus를 변경합니다.
+                            console.error("Anonymous Auth Failed:", err);
                             setCloudStatus('connected'); 
                         }
                     };
@@ -203,7 +202,7 @@
                     doAuth();
                     const unsubscribe = onAuthStateChanged(fbAuth, (u) => {
                         setUser(u);
-                        setCloudStatus('connected'); // 로그인 여부 상관없이 무조건 connected로 변경
+                        setCloudStatus('connected');
                     });
                     return () => unsubscribe();
                 } catch (err) {
@@ -233,7 +232,7 @@
                 }
             };
 
-            // 🔥 읽기 조건 완화: user 로그인 여부와 무관하게 dbInstance만 있으면 무조건 읽어옴
+            // Firestore Realtime Sync Reader
             useEffect(() => {
                 if (!dbInstance || !window.FirebaseAPI) return;
                 const { doc, onSnapshot } = window.FirebaseAPI;
@@ -263,11 +262,11 @@
                 return () => unsubscribe();
             }, [dbInstance, appIdStr]);
 
+            // 🔥 수정된 데이터 업로드 및 Firestore 저장 로직
             const handleFileUpload = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
 
-                // 로그인 확인 (이메일 폼 로그인인지 검증)
                 const isEmailUser = user && user.email;
                 if (!isEmailUser) {
                     const confirmUpload = window.confirm("⚠️ 현재 '읽기 전용' 상태입니다.\n이 상태로 업로드하면 본인 화면에만 보이고 다른 사람에게는 공유되지 않습니다.\n\n계속 진행하시겠습니까?\n(공유를 원하시면 취소를 누르고 좌측 상단의 🔒 관리자 로그인을 먼저 진행하세요)");
@@ -280,11 +279,18 @@
                 const reader = new FileReader();
                 reader.onload = async (ev) => {
                     const text = ev.target.result;
-                    
+                    const payload = {};
+                    let isOnboarding = false;
+                    let isPayment = false;
+
                     if (text.includes('앱설치일')) {
+                        isOnboarding = true;
+                        payload.onboardingCsv = text;
                         localStorage.setItem('shopify_dashboard_onboarding', text);
                         processOnboardingData(text, true);
                     } else if (text.includes('신청 플랜')) {
+                        isPayment = true;
+                        payload.paymentCsv = text;
                         localStorage.setItem('shopify_dashboard_payment', text);
                         processPaymentData(text, true);
                     } else {
@@ -292,21 +298,22 @@
                         return;
                     }
 
+                    // Firestore 업데이트 (merge: true 및 updatedAt 트리거 추가)
                     if (dbInstance && window.FirebaseAPI && isEmailUser) {
                         const { doc, setDoc } = window.FirebaseAPI;
                         try {
                             setIsSyncing(true);
                             const dataDocRef = doc(dbInstance, 'artifacts', appIdStr, 'public', 'data', 'csv_data', 'latest');
-                            const payload = {};
-                            if (text.includes('앱설치일')) payload.onboardingCsv = text;
-                            if (text.includes('신청 플랜')) payload.paymentCsv = text;
                             
+                            // 갱신 타임스탬프 추가로 Firestore 변경 이벤트 확실히 발동
+                            payload.updatedAt = new Date().getTime();
+
                             await setDoc(dataDocRef, payload, { merge: true });
                             setIsSyncing(false);
-                            alert("성공적으로 클라우드에 업로드되었습니다! 이제 다른 사람들도 데이터를 볼 수 있습니다.");
+                            alert("성공적으로 클라우드에 업로드 및 갱신되었습니다!");
                         } catch (err) {
                             console.error("Cloud upload error:", err);
-                            alert("클라우드 저장 권한이 없습니다. 관리자 권한을 확인해주세요.");
+                            alert("클라우드 저장 실패: " + err.message + "\n관리자 권한을 확인해주세요.");
                             setIsSyncing(false);
                         }
                     }
